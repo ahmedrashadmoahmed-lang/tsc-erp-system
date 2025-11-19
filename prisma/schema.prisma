@@ -1,0 +1,1182 @@
+// TSC ERP System - Complete Database Schema
+// نظام ERP شامل لشركة TSC
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================
+// 1. نظام المستخدمين والصلاحيات
+// ============================================
+
+model User {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique
+  email         String    @unique
+  password      String
+  fullName      String
+  phone         String?
+  role          UserRole  @default(SALES)
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  
+  // Relations
+  permissions         UserPermission[]
+  createdOpportunities Opportunity[]
+  createdQuotations   Quotation[]
+  createdInvoices     Invoice[]
+  createdPayments     Payment[]
+  createdJournalEntries JournalEntry[] @relation("CreatedBy")
+  approvedJournalEntries JournalEntry[] @relation("ApprovedBy")
+  managedWarehouses   Warehouse[]
+  responsibleAssets   FixedAsset[]
+  createdTenders      Tender[]
+  approvalRequests    ApprovalRequest[] @relation("RequestedBy")
+  approvalActions     ApprovalAction[]
+  employeeRecord      Employee?
+  
+  @@map("users")
+}
+
+enum UserRole {
+  ADMIN
+  SALES_MANAGER
+  SALES
+  ACCOUNTANT
+  WAREHOUSE
+  PROCUREMENT
+  HR_MANAGER
+  AUDITOR
+}
+
+model UserPermission {
+  id         Int      @id @default(autoincrement())
+  userId     Int
+  permission String
+  createdAt  DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@unique([userId, permission])
+  @@map("user_permissions")
+}
+
+// ============================================
+// 2. العملاء (Customers)
+// ============================================
+
+model Customer {
+  id                Int       @id @default(autoincrement())
+  customerCode      String    @unique
+  companyName       String
+  contactPerson     String?
+  email             String?
+  phone             String
+  mobile            String?
+  taxNumber         String?
+  commercialRegister String?
+  address           String?
+  city              String?
+  governorate       String?
+  country           String    @default("مصر")
+  paymentTerms      Int       @default(30) // days
+  creditLimit       Decimal   @default(0) @db.Decimal(15, 2)
+  currentBalance    Decimal   @default(0) @db.Decimal(15, 2)
+  category          String?
+  isActive          Boolean   @default(true)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  opportunities     Opportunity[]
+  quotations        Quotation[]
+  invoices          Invoice[]
+  payments          Payment[]
+  tenders           Tender[]
+  guarantees        Guarantee[] @relation("CustomerGuarantees")
+  
+  @@map("customers")
+}
+
+// ============================================
+// 3. الموردين (Suppliers)
+// ============================================
+
+model Supplier {
+  id                Int       @id @default(autoincrement())
+  supplierCode      String    @unique
+  companyName       String
+  contactPerson     String?
+  email             String?
+  phone             String
+  mobile            String?
+  taxNumber         String?
+  commercialRegister String?
+  address           String?
+  city              String?
+  governorate       String?
+  country           String    @default("مصر")
+  categories        String[] // فئات المنتجات
+  paymentTerms      Int       @default(30)
+  rating            Decimal?  @db.Decimal(3, 2) // 0.00 to 5.00
+  currentBalance    Decimal   @default(0) @db.Decimal(15, 2)
+  isActive          Boolean   @default(true)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  // Relations
+  rfqs              RFQ[]
+  rfqResponses      RFQResponse[]
+  purchaseOrders    PurchaseOrder[]
+  payments          Payment[]
+  guarantees        Guarantee[] @relation("SupplierGuarantees")
+  
+  @@map("suppliers")
+}
+
+// ============================================
+// 4. المنتجات (Products)
+// ============================================
+
+model Product {
+  id              Int       @id @default(autoincrement())
+  productCode     String    @unique
+  productName     String
+  description     String?
+  category        String
+  brand           String?
+  unit            String    @default("قطعة")
+  barcode         String?
+  costPrice       Decimal   @default(0) @db.Decimal(12, 2)
+  sellingPrice    Decimal   @default(0) @db.Decimal(12, 2)
+  minStockLevel   Decimal?  @db.Decimal(10, 2)
+  reorderPoint    Decimal?  @db.Decimal(10, 2)
+  isActive        Boolean   @default(true)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  quotationItems    QuotationItem[]
+  invoiceItems      InvoiceItem[]
+  purchaseOrderItems PurchaseOrderItem[]
+  rfqItems          RFQItem[]
+  stockItems        StockItem[]
+  stockMovements    StockMovement[]
+  tenderItems       TenderItem[]
+  
+  @@map("products")
+}
+
+// ============================================
+// 5. الفرص البيعية (Sales Opportunities)
+// ============================================
+
+model Opportunity {
+  id              Int       @id @default(autoincrement())
+  opportunityNumber String  @unique
+  customerId      Int
+  salesRepId      Int
+  title           String
+  description     String?
+  estimatedValue  Decimal   @db.Decimal(15, 2)
+  probability     Int       @default(50) // %
+  stage           OpportunityStage @default(NEW)
+  priority        Priority  @default(MEDIUM)
+  expectedCloseDate DateTime?
+  actualCloseDate DateTime?
+  lostReason      String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  customer  Customer @relation(fields: [customerId], references: [id])
+  salesRep  User     @relation(fields: [salesRepId], references: [id])
+  
+  // Relations
+  rfqs          RFQ[]
+  quotations    Quotation[]
+  
+  @@map("opportunities")
+}
+
+enum OpportunityStage {
+  NEW
+  QUALIFIED
+  RFQ_SENT
+  QUOTATION_SENT
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+// ============================================
+// 6. نظام RFQ (Request for Quotation)
+// ============================================
+
+model RFQ {
+  id              Int       @id @default(autoincrement())
+  rfqNumber       String    @unique
+  opportunityId   Int?
+  title           String
+  description     String?
+  deadline        DateTime
+  status          RFQStatus @default(DRAFT)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  
+  // Relations
+  items       RFQItem[]
+  responses   RFQResponse[]
+  suppliers   Supplier[]
+  
+  @@map("rfqs")
+}
+
+enum RFQStatus {
+  DRAFT
+  SENT
+  IN_PROGRESS
+  CLOSED
+  CANCELLED
+}
+
+model RFQItem {
+  id            Int       @id @default(autoincrement())
+  rfqId         Int
+  productId     Int?
+  itemNumber    Int
+  description   String
+  specifications String?
+  quantity      Decimal   @db.Decimal(10, 2)
+  unit          String
+  notes         String?
+  
+  rfq     RFQ      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+  
+  // Relations
+  responses RFQResponseItem[]
+  
+  @@map("rfq_items")
+}
+
+model RFQResponse {
+  id              Int       @id @default(autoincrement())
+  rfqId           Int
+  supplierId      Int
+  responseDate    DateTime?
+  totalAmount     Decimal?  @db.Decimal(15, 2)
+  deliveryDays    Int?
+  paymentTerms    String?
+  warranty        String?
+  status          ResponseStatus @default(PENDING)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  
+  rfq      RFQ      @relation(fields: [rfqId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  
+  // Relations
+  items    RFQResponseItem[]
+  
+  @@map("rfq_responses")
+}
+
+enum ResponseStatus {
+  PENDING
+  RESPONDED
+  ACCEPTED
+  REJECTED
+  NO_RESPONSE
+}
+
+model RFQResponseItem {
+  id            Int       @id @default(autoincrement())
+  responseId    Int
+  rfqItemId     Int
+  unitPrice     Decimal   @db.Decimal(12, 2)
+  totalPrice    Decimal   @db.Decimal(15, 2)
+  notes         String?
+  
+  response  RFQResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  rfqItem   RFQItem     @relation(fields: [rfqItemId], references: [id])
+  
+  @@map("rfq_response_items")
+}
+
+// ============================================
+// 7. العروض (Quotations)
+// ============================================
+
+model Quotation {
+  id              Int       @id @default(autoincrement())
+  quotationNumber String    @unique
+  customerId      Int
+  opportunityId   Int?
+  salesRepId      Int
+  quotationDate   DateTime  @default(now())
+  validUntil      DateTime
+  status          QuotationStatus @default(DRAFT)
+  subtotal        Decimal   @db.Decimal(15, 2)
+  vatAmount       Decimal   @db.Decimal(15, 2)
+  profitTaxAmount Decimal   @db.Decimal(15, 2)
+  totalAmount     Decimal   @db.Decimal(15, 2)
+  notes           String?
+  terms           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  customer    Customer     @relation(fields: [customerId], references: [id])
+  opportunity Opportunity? @relation(fields: [opportunityId], references: [id])
+  salesRep    User         @relation(fields: [salesRepId], references: [id])
+  
+  // Relations
+  items       QuotationItem[]
+  
+  @@map("quotations")
+}
+
+enum QuotationStatus {
+  DRAFT
+  SENT
+  ACCEPTED
+  REJECTED
+  EXPIRED
+}
+
+model QuotationItem {
+  id              Int       @id @default(autoincrement())
+  quotationId     Int
+  productId       Int?
+  itemNumber      Int
+  description     String
+  quantity        Decimal   @db.Decimal(10, 2)
+  unit            String
+  unitCost        Decimal   @db.Decimal(12, 2)
+  shippingCost    Decimal   @default(0) @db.Decimal(12, 2)
+  totalCost       Decimal   @db.Decimal(15, 2)
+  marginPercent   Decimal   @db.Decimal(5, 2)
+  unitPrice       Decimal   @db.Decimal(12, 2)
+  totalPrice      Decimal   @db.Decimal(15, 2)
+  notes           String?
+  
+  quotation Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product   Product?  @relation(fields: [productId], references: [id])
+  
+  @@map("quotation_items")
+}
+
+// ============================================
+// 8. أوامر الشراء (Purchase Orders)
+// ============================================
+
+model PurchaseOrder {
+  id              Int       @id @default(autoincrement())
+  poNumber        String    @unique
+  supplierId      Int
+  orderDate       DateTime  @default(now())
+  expectedDate    DateTime?
+  status          POStatus  @default(PENDING)
+  subtotal        Decimal   @db.Decimal(15, 2)
+  vatAmount       Decimal   @db.Decimal(15, 2)
+  totalAmount     Decimal   @db.Decimal(15, 2)
+  paidAmount      Decimal   @default(0) @db.Decimal(15, 2)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  supplier Supplier @relation(fields: [supplierId], references: [id])
+  
+  // Relations
+  items    PurchaseOrderItem[]
+  payments Payment[]
+  
+  @@map("purchase_orders")
+}
+
+enum POStatus {
+  PENDING
+  APPROVED
+  SENT
+  PARTIAL_RECEIVED
+  RECEIVED
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id            Int       @id @default(autoincrement())
+  poId          Int
+  productId     Int?
+  itemNumber    Int
+  description   String
+  quantity      Decimal   @db.Decimal(10, 2)
+  receivedQty   Decimal   @default(0) @db.Decimal(10, 2)
+  unit          String
+  unitPrice     Decimal   @db.Decimal(12, 2)
+  totalPrice    Decimal   @db.Decimal(15, 2)
+  notes         String?
+  
+  purchaseOrder PurchaseOrder @relation(fields: [poId], references: [id], onDelete: Cascade)
+  product       Product?      @relation(fields: [productId], references: [id])
+  
+  @@map("purchase_order_items")
+}
+
+// ============================================
+// 9. الفواتير (Invoices)
+// ============================================
+
+model Invoice {
+  id              Int       @id @default(autoincrement())
+  invoiceNumber   String    @unique
+  customerId      Int
+  invoiceDate     DateTime  @default(now())
+  dueDate         DateTime
+  salesRepId      Int?
+  status          InvoiceStatus @default(DRAFT)
+  subtotal        Decimal   @db.Decimal(15, 2)
+  vatAmount       Decimal   @db.Decimal(15, 2)
+  profitTaxAmount Decimal   @db.Decimal(15, 2)
+  totalAmount     Decimal   @db.Decimal(15, 2)
+  paidAmount      Decimal   @default(0) @db.Decimal(15, 2)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  customer Customer @relation(fields: [customerId], references: [id])
+  salesRep User?    @relation(fields: [salesRepId], references: [id])
+  
+  // Relations
+  items    InvoiceItem[]
+  payments Payment[]
+  
+  @@map("invoices")
+}
+
+enum InvoiceStatus {
+  DRAFT
+  SENT
+  PARTIAL_PAID
+  PAID
+  OVERDUE
+  CANCELLED
+}
+
+model InvoiceItem {
+  id            Int       @id @default(autoincrement())
+  invoiceId     Int
+  productId     Int?
+  itemNumber    Int
+  description   String
+  quantity      Decimal   @db.Decimal(10, 2)
+  unit          String
+  unitPrice     Decimal   @db.Decimal(12, 2)
+  totalPrice    Decimal   @db.Decimal(15, 2)
+  notes         String?
+  
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+  
+  @@map("invoice_items")
+}
+
+// ============================================
+// 10. المدفوعات (Payments)
+// ============================================
+
+model Payment {
+  id              Int       @id @default(autoincrement())
+  paymentNumber   String    @unique
+  paymentType     PaymentType
+  paymentDate     DateTime  @default(now())
+  amount          Decimal   @db.Decimal(15, 2)
+  paymentMethod   PaymentMethod
+  customerId      Int?
+  supplierId      Int?
+  invoiceId       Int?
+  poId            Int?
+  bankAccountId   Int?
+  cashBoxId       Int?
+  chequeNumber    String?
+  reference       String?
+  notes           String?
+  createdBy       Int
+  createdAt       DateTime  @default(now())
+  
+  customer    Customer?       @relation(fields: [customerId], references: [id])
+  supplier    Supplier?       @relation(fields: [supplierId], references: [id])
+  invoice     Invoice?        @relation(fields: [invoiceId], references: [id])
+  purchaseOrder PurchaseOrder? @relation(fields: [poId], references: [id])
+  bankAccount BankAccount?    @relation(fields: [bankAccountId], references: [id])
+  cashBox     CashBox?        @relation(fields: [cashBoxId], references: [id])
+  createdByUser User          @relation(fields: [createdBy], references: [id])
+  
+  @@map("payments")
+}
+
+enum PaymentType {
+  RECEIPT      // مقبوضات
+  PAYMENT      // مدفوعات
+}
+
+enum PaymentMethod {
+  CASH
+  CHEQUE
+  BANK_TRANSFER
+  CARD
+  MOBILE_WALLET
+}
+
+// (... يتبع في الجزء الثاني)
+
+// ============================================
+// 11. شجرة الحسابات (Chart of Accounts)
+// ============================================
+
+model ChartOfAccount {
+  id              Int       @id @default(autoincrement())
+  accountCode     String    @unique
+  accountNameAr   String
+  accountNameEn   String?
+  parentId        Int?
+  accountType     AccountType
+  accountCategory String? // cash, bank, receivables, payables, etc.
+  level           Int       @default(1)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  parent   ChartOfAccount?  @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children ChartOfAccount[] @relation("AccountHierarchy")
+  
+  // Relations
+  journalEntryLines JournalEntryLine[]
+  
+  @@map("chart_of_accounts")
+}
+
+enum AccountType {
+  ASSET
+  LIABILITY
+  EQUITY
+  REVENUE
+  EXPENSE
+}
+
+// ============================================
+// 12. القيود المحاسبية (Journal Entries)
+// ============================================
+
+model JournalEntry {
+  id              Int       @id @default(autoincrement())
+  entryNumber     String    @unique
+  entryDate       DateTime  @default(now())
+  referenceType   String?   // invoice, payment, purchase, expense
+  referenceId     Int?
+  description     String
+  totalDebit      Decimal   @db.Decimal(15, 2)
+  totalCredit     Decimal   @db.Decimal(15, 2)
+  status          JournalStatus @default(DRAFT)
+  createdBy       Int
+  approvedBy      Int?
+  approvedAt      DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  creator  User  @relation("CreatedBy", fields: [createdBy], references: [id])
+  approver User? @relation("ApprovedBy", fields: [approvedBy], references: [id])
+  
+  // Relations
+  lines JournalEntryLine[]
+  
+  @@map("journal_entries")
+}
+
+enum JournalStatus {
+  DRAFT
+  POSTED
+  REVERSED
+}
+
+model JournalEntryLine {
+  id              Int       @id @default(autoincrement())
+  journalEntryId  Int
+  accountId       Int
+  debit           Decimal   @default(0) @db.Decimal(15, 2)
+  credit          Decimal   @default(0) @db.Decimal(15, 2)
+  description     String?
+  costCenter      String?
+  createdAt       DateTime  @default(now())
+  
+  journalEntry JournalEntry    @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      ChartOfAccount  @relation(fields: [accountId], references: [id])
+  
+  @@map("journal_entry_lines")
+}
+
+// ============================================
+// 13. المناقصات (Tenders)
+// ============================================
+
+model Tender {
+  id                    Int       @id @default(autoincrement())
+  tenderNumber          String    @unique
+  tenderName            String
+  customerId            Int
+  tenderType            TenderType @default(OPEN)
+  estimatedValue        Decimal?  @db.Decimal(15, 2)
+  bidBondPercentage     Decimal?  @db.Decimal(5, 2)
+  bidBondAmount         Decimal?  @db.Decimal(15, 2)
+  bidBondType           GuaranteeType?
+  bidBondReference      String?
+  bidBondExpiryDate     DateTime?
+  performanceBondPercentage Decimal? @db.Decimal(5, 2)
+  performanceBondAmount Decimal?  @db.Decimal(15, 2)
+  performanceBondType   GuaranteeType?
+  performanceBondReference String?
+  performanceBondExpiryDate DateTime?
+  submissionDeadline    DateTime?
+  openingDate           DateTime?
+  status                TenderStatus @default(DRAFT)
+  awardedDate           DateTime?
+  awardedAmount         Decimal?  @db.Decimal(15, 2)
+  projectStartDate      DateTime?
+  projectEndDate        DateTime?
+  warrantyPeriodMonths  Int?
+  notes                 String?
+  createdBy             Int
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  
+  customer Customer @relation(fields: [customerId], references: [id])
+  creator  User     @relation(fields: [createdBy], references: [id])
+  
+  // Relations
+  items     TenderItem[]
+  documents TenderDocument[]
+  
+  @@map("tenders")
+}
+
+enum TenderType {
+  OPEN      // علنية
+  LIMITED   // محدودة
+  DIRECT    // مباشرة
+}
+
+enum TenderStatus {
+  DRAFT
+  PUBLISHED
+  SUBMITTED
+  UNDER_EVALUATION
+  AWARDED
+  NOT_AWARDED
+  CANCELLED
+}
+
+model TenderItem {
+  id                Int       @id @default(autoincrement())
+  tenderId          Int
+  productId         Int?
+  itemNumber        Int
+  description       String
+  quantity          Decimal   @db.Decimal(10, 2)
+  unit              String
+  estimatedUnitPrice Decimal? @db.Decimal(12, 2)
+  estimatedTotal    Decimal?  @db.Decimal(15, 2)
+  ourUnitPrice      Decimal?  @db.Decimal(12, 2)
+  ourTotal          Decimal?  @db.Decimal(15, 2)
+  notes             String?
+  
+  tender  Tender   @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
+  
+  @@map("tender_items")
+}
+
+model TenderDocument {
+  id            Int       @id @default(autoincrement())
+  tenderId      Int
+  documentType  String // technical, financial, legal
+  documentName  String
+  filePath      String
+  uploadedAt    DateTime  @default(now())
+  
+  tender Tender @relation(fields: [tenderId], references: [id], onDelete: Cascade)
+  
+  @@map("tender_documents")
+}
+
+// ============================================
+// 14. التأمينات (Guarantees)
+// ============================================
+
+model Guarantee {
+  id              Int       @id @default(autoincrement())
+  guaranteeNumber String    @unique
+  guaranteeType   GuaranteeKind
+  relatedTo       RelatedEntity
+  relatedId       Int
+  customerId      Int?
+  supplierId      Int?
+  issuingBank     String
+  guaranteeAmount Decimal   @db.Decimal(15, 2)
+  percentage      Decimal?  @db.Decimal(5, 2)
+  issueDate       DateTime
+  expiryDate      DateTime
+  status          GuaranteeStatus @default(ACTIVE)
+  returnedDate    DateTime?
+  claimedDate     DateTime?
+  claimedAmount   Decimal?  @db.Decimal(15, 2)
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  customer Customer? @relation("CustomerGuarantees", fields: [customerId], references: [id])
+  supplier Supplier? @relation("SupplierGuarantees", fields: [supplierId], references: [id])
+  
+  @@map("guarantees")
+}
+
+enum GuaranteeType {
+  BANK_GUARANTEE
+  CHEQUE
+  CASH
+}
+
+enum GuaranteeKind {
+  BID_BOND            // تأمين ابتدائي
+  PERFORMANCE_BOND    // تأمين نهائي/حسن تنفيذ
+  ADVANCE_PAYMENT     // تأمين دفعة مقدمة
+  RETENTION           // تأمين استبقاء
+}
+
+enum RelatedEntity {
+  TENDER
+  CONTRACT
+  PURCHASE_ORDER
+}
+
+enum GuaranteeStatus {
+  ACTIVE
+  EXPIRED
+  RETURNED
+  CLAIMED
+}
+
+// ============================================
+// 15. الخزينة (Treasury)
+// ============================================
+
+model BankAccount {
+  id              Int       @id @default(autoincrement())
+  accountNumber   String    @unique
+  bankName        String
+  branchName      String?
+  accountType     BankAccountType @default(CURRENT)
+  currency        String    @default("EGP")
+  openingBalance  Decimal   @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal   @default(0) @db.Decimal(15, 2)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  // Relations
+  payments Payment[]
+  
+  @@map("bank_accounts")
+}
+
+enum BankAccountType {
+  CURRENT
+  SAVINGS
+  DEPOSIT
+}
+
+model CashBox {
+  id              Int       @id @default(autoincrement())
+  boxName         String
+  location        String?
+  responsibleUserId Int?
+  openingBalance  Decimal   @default(0) @db.Decimal(15, 2)
+  currentBalance  Decimal   @default(0) @db.Decimal(15, 2)
+  maxLimit        Decimal?  @db.Decimal(15, 2)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  responsibleUser User? @relation(fields: [responsibleUserId], references: [id])
+  
+  // Relations
+  payments Payment[]
+  
+  @@map("cash_boxes")
+}
+
+model Cheque {
+  id              Int       @id @default(autoincrement())
+  chequeNumber    String
+  chequeType      ChequeType
+  bankName        String
+  amount          Decimal   @db.Decimal(15, 2)
+  chequeDate      DateTime
+  dueDate         DateTime
+  customerId      Int?
+  supplierId      Int?
+  paymentId       Int?
+  status          ChequeStatus @default(PENDING)
+  depositedDate   DateTime?
+  clearedDate     DateTime?
+  bouncedReason   String?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  customer Customer? @relation(fields: [customerId], references: [id])
+  supplier Supplier? @relation(fields: [supplierId], references: [id])
+  
+  @@map("cheques")
+}
+
+enum ChequeType {
+  INCOMING
+  OUTGOING
+}
+
+enum ChequeStatus {
+  PENDING
+  DEPOSITED
+  CLEARED
+  BOUNCED
+  CANCELLED
+}
+
+// ============================================
+// 16. الموارد البشرية (HR & Payroll)
+// ============================================
+
+model Employee {
+  id                  Int       @id @default(autoincrement())
+  employeeCode        String    @unique
+  userId              Int?      @unique
+  fullName            String
+  nationalId          String?   @unique
+  birthDate           DateTime?
+  gender              Gender?
+  maritalStatus       MaritalStatus?
+  address             String?
+  phone               String?
+  emergencyContact    String?
+  emergencyPhone      String?
+  jobTitle            String?
+  department          String?
+  hireDate            DateTime?
+  resignationDate     DateTime?
+  employmentStatus    EmploymentStatus @default(ACTIVE)
+  basicSalary         Decimal?  @db.Decimal(12, 2)
+  socialInsuranceNumber String?
+  taxNumber           String?
+  bankAccount         String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+  
+  user User? @relation(fields: [userId], references: [id])
+  
+  // Relations
+  payrolls Payroll[]
+  
+  @@map("employees")
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum MaritalStatus {
+  SINGLE
+  MARRIED
+  DIVORCED
+  WIDOWED
+}
+
+enum EmploymentStatus {
+  ACTIVE
+  RESIGNED
+  TERMINATED
+  SUSPENDED
+}
+
+model Payroll {
+  id                      Int       @id @default(autoincrement())
+  payrollNumber           String    @unique
+  employeeId              Int
+  month                   Int
+  year                    Int
+  basicSalary             Decimal   @db.Decimal(12, 2)
+  allowances              Decimal   @default(0) @db.Decimal(12, 2)
+  commissions             Decimal   @default(0) @db.Decimal(12, 2)
+  overtime                Decimal   @default(0) @db.Decimal(12, 2)
+  bonuses                 Decimal   @default(0) @db.Decimal(12, 2)
+  totalEarnings           Decimal   @db.Decimal(12, 2)
+  socialInsuranceEmployee Decimal   @default(0) @db.Decimal(12, 2)
+  socialInsuranceCompany  Decimal   @default(0) @db.Decimal(12, 2)
+  tax                     Decimal   @default(0) @db.Decimal(12, 2)
+  loansDeduction          Decimal   @default(0) @db.Decimal(12, 2)
+  penalties               Decimal   @default(0) @db.Decimal(12, 2)
+  totalDeductions         Decimal   @db.Decimal(12, 2)
+  netSalary               Decimal   @db.Decimal(12, 2)
+  paymentDate             DateTime?
+  status                  PayrollStatus @default(DRAFT)
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  
+  employee Employee @relation(fields: [employeeId], references: [id])
+  
+  @@unique([employeeId, month, year])
+  @@map("payrolls")
+}
+
+enum PayrollStatus {
+  DRAFT
+  APPROVED
+  PAID
+}
+
+// ============================================
+// 17. الأصول الثابتة (Fixed Assets)
+// ============================================
+
+model FixedAsset {
+  id                      Int       @id @default(autoincrement())
+  assetCode               String    @unique
+  assetName               String
+  assetCategory           String
+  purchaseDate            DateTime
+  purchaseCost            Decimal   @db.Decimal(15, 2)
+  residualValue           Decimal   @default(0) @db.Decimal(15, 2)
+  usefulLifeYears         Int
+  depreciationMethod      DepreciationMethod @default(STRAIGHT_LINE)
+  accumulatedDepreciation Decimal   @default(0) @db.Decimal(15, 2)
+  currentBookValue        Decimal   @db.Decimal(15, 2)
+  location                String?
+  responsibleUserId       Int?
+  status                  AssetStatus @default(ACTIVE)
+  disposalDate            DateTime?
+  disposalValue           Decimal?  @db.Decimal(15, 2)
+  notes                   String?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
+  
+  responsibleUser User? @relation(fields: [responsibleUserId], references: [id])
+  
+  @@map("fixed_assets")
+}
+
+enum DepreciationMethod {
+  STRAIGHT_LINE        // القسط الثابت
+  DECLINING_BALANCE    // القسط المتناقص
+  UNITS_OF_PRODUCTION  // وحدات الإنتاج
+}
+
+enum AssetStatus {
+  ACTIVE
+  DISPOSED
+  UNDER_MAINTENANCE
+}
+
+// ============================================
+// 18. المخزون المتقدم (Advanced Inventory)
+// ============================================
+
+model Warehouse {
+  id                Int       @id @default(autoincrement())
+  warehouseCode     String    @unique
+  warehouseName     String
+  location          String?
+  warehouseManagerId Int?
+  isMain            Boolean   @default(false)
+  isActive          Boolean   @default(true)
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  warehouseManager User? @relation(fields: [warehouseManagerId], references: [id])
+  
+  // Relations
+  locations      InventoryLocation[]
+  stockItems     StockItem[]
+  movementsFrom  StockMovement[] @relation("FromWarehouse")
+  movementsTo    StockMovement[] @relation("ToWarehouse")
+  
+  @@map("warehouses")
+}
+
+model InventoryLocation {
+  id            Int       @id @default(autoincrement())
+  warehouseId   Int
+  locationCode  String
+  locationName  String?
+  aisle         String?
+  rack          String?
+  shelf         String?
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  
+  // Relations
+  stockItems    StockItem[]
+  movementsFrom StockMovement[] @relation("FromLocation")
+  movementsTo   StockMovement[] @relation("ToLocation")
+  
+  @@unique([warehouseId, locationCode])
+  @@map("inventory_locations")
+}
+
+model StockItem {
+  id                Int       @id @default(autoincrement())
+  productId         Int
+  warehouseId       Int
+  locationId        Int?
+  quantity          Decimal   @default(0) @db.Decimal(10, 2)
+  reservedQuantity  Decimal   @default(0) @db.Decimal(10, 2)
+  availableQuantity Decimal   @default(0) @db.Decimal(10, 2)
+  reorderPoint      Decimal?  @db.Decimal(10, 2)
+  minStockLevel     Decimal?  @db.Decimal(10, 2)
+  maxStockLevel     Decimal?  @db.Decimal(10, 2)
+  averageCost       Decimal?  @db.Decimal(12, 2)
+  lastPurchaseCost  Decimal?  @db.Decimal(12, 2)
+  lastUpdated       DateTime  @default(now())
+  
+  product   Product            @relation(fields: [productId], references: [id])
+  warehouse Warehouse          @relation(fields: [warehouseId], references: [id])
+  location  InventoryLocation? @relation(fields: [locationId], references: [id])
+  
+  @@unique([productId, warehouseId, locationId])
+  @@map("stock_items")
+}
+
+model StockMovement {
+  id              Int       @id @default(autoincrement())
+  movementNumber  String    @unique
+  movementType    MovementType
+  movementDate    DateTime  @default(now())
+  productId       Int
+  fromWarehouseId Int?
+  toWarehouseId   Int?
+  fromLocationId  Int?
+  toLocationId    Int?
+  quantity        Decimal   @db.Decimal(10, 2)
+  unitCost        Decimal?  @db.Decimal(12, 2)
+  totalCost       Decimal?  @db.Decimal(15, 2)
+  referenceType   String?
+  referenceId     Int?
+  notes           String?
+  createdBy       Int
+  createdAt       DateTime  @default(now())
+  
+  product        Product            @relation(fields: [productId], references: [id])
+  fromWarehouse  Warehouse?         @relation("FromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse    Warehouse?         @relation("ToWarehouse", fields: [toWarehouseId], references: [id])
+  fromLocation   InventoryLocation? @relation("FromLocation", fields: [fromLocationId], references: [id])
+  toLocation     InventoryLocation? @relation("ToLocation", fields: [toLocationId], references: [id])
+  
+  @@map("stock_movements")
+}
+
+enum MovementType {
+  IN          // إدخال
+  OUT         // صرف
+  TRANSFER    // نقل
+  ADJUSTMENT  // تسوية
+}
+
+// ============================================
+// 19. نظام الموافقات (Approval Workflows)
+// ============================================
+
+model ApprovalWorkflow {
+  id              Int       @id @default(autoincrement())
+  workflowName    String
+  entityType      String // quotation, purchase_order, payment, expense
+  levelNumber     Int
+  roleRequired    String
+  amountThreshold Decimal?  @db.Decimal(15, 2)
+  isActive        Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  
+  @@map("approval_workflows")
+}
+
+model ApprovalRequest {
+  id            Int       @id @default(autoincrement())
+  requestNumber String    @unique
+  entityType    String
+  entityId      Int
+  amount        Decimal?  @db.Decimal(15, 2)
+  currentLevel  Int       @default(1)
+  status        ApprovalStatus @default(PENDING)
+  requestedBy   Int
+  requestedAt   DateTime  @default(now())
+  notes         String?
+  
+  requester User @relation("RequestedBy", fields: [requestedBy], references: [id])
+  
+  // Relations
+  actions ApprovalAction[]
+  
+  @@map("approval_requests")
+}
+
+enum ApprovalStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+model ApprovalAction {
+  id                Int       @id @default(autoincrement())
+  approvalRequestId Int
+  levelNumber       Int
+  approverId        Int
+  action            ActionType
+  actionDate        DateTime  @default(now())
+  comments          String?
+  
+  approvalRequest ApprovalRequest @relation(fields: [approvalRequestId], references: [id], onDelete: Cascade)
+  approver        User            @relation(fields: [approverId], references: [id])
+  
+  @@map("approval_actions")
+}
+
+enum ActionType {
+  APPROVED
+  REJECTED
+}
+
+// ============================================
+// 20. العلاقات المفقودة (Missing Relations)
+// ============================================
+
+model Customer {
+  cheques Cheque[]
+}

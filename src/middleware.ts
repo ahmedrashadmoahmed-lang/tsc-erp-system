@@ -14,18 +14,12 @@ const protectedRoutes = [
   '/reports',
 ]
 
-const publicRoutes = ['/login', '/register', '/']
-
 export async function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl
   
   // Check if route is protected
   const isProtectedRoute = protectedRoutes.some(route => 
     pathname.startsWith(route)
-  )
-  
-  const isPublicRoute = publicRoutes.some(route => 
-    pathname === route
   )
   
   if (isProtectedRoute) {

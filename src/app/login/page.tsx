@@ -31,7 +31,7 @@ export default function LoginPage() {
       } else {
         setError(data.error || 'فشل تسجيل الدخول')
       }
-    } catch (err) {
+    } catch {
       setError('حدث خطأ في الاتصال')
     } finally {
       setLoading(false)

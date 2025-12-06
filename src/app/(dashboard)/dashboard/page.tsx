@@ -11,7 +11,7 @@ interface Stats {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<Stats | null>(null)
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<{ fullName?: string } | null>(null)
 
   useEffect(() => {
     // الحصول على بيانات المستخدم

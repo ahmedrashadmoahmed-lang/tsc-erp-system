@@ -35,6 +35,7 @@ model User {
   createdJournalEntries JournalEntry[] @relation("CreatedBy")
   approvedJournalEntries JournalEntry[] @relation("ApprovedBy")
   managedWarehouses   Warehouse[]
+  managedCashBoxes    CashBox[]
   responsibleAssets   FixedAsset[]
   createdTenders      Tender[]
   approvalRequests    ApprovalRequest[] @relation("RequestedBy")
@@ -101,6 +102,7 @@ model Customer {
   payments          Payment[]
   tenders           Tender[]
   guarantees        Guarantee[] @relation("CustomerGuarantees")
+  cheques           Cheque[]
   
   @@map("customers")
 }
@@ -138,6 +140,7 @@ model Supplier {
   purchaseOrders    PurchaseOrder[]
   payments          Payment[]
   guarantees        Guarantee[] @relation("SupplierGuarantees")
+  cheques           Cheque[]
   
   @@map("suppliers")
 }
@@ -1173,10 +1176,4 @@ enum ActionType {
   REJECTED
 }
 
-// ============================================
-// 20. العلاقات المفقودة (Missing Relations)
-// ============================================
 
-model Customer {
-  cheques Cheque[]
-}

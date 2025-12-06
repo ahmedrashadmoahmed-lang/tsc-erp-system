@@ -10,7 +10,7 @@ export default function DashboardLayout({
   children: React.ReactNode
 }) {
   const router = useRouter()
-  const [user, setUser] = useState<any>(null)
+  const [user, setUser] = useState<{ fullName?: string; role?: string } | null>(null)
   const [sidebarOpen, setSidebarOpen] = useState(true)
 
   useEffect(() => {

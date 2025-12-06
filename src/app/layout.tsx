@@ -1,11 +1,5 @@
 import './globals.css'
 import type { Metadata } from 'next'
-import { Cairo } from 'next/font/google'
-
-const cairo = Cairo({ 
-  subsets: ['arabic'],
-  display: 'swap',
-})
 
 export const metadata: Metadata = {
   title: 'نظام TSC ERP | إدارة شاملة للأعمال',
@@ -19,7 +13,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="ar" dir="rtl">
-      <body className={cairo.className}>{children}</body>
+      <body className="font-sans">{children}</body>
     </html>
   )
 }
